@@ -1,6 +1,9 @@
 // --- CONFIGURATION ---
 const CLIENT_ID = "5bc17dabfc0945b7b6ba5ee2989a25f1";
-const REDIRECT_URI = "http://127.0.0.1:5500/index.html";
+const IS_LOCALHOST = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+const REDIRECT_URI = IS_LOCALHOST 
+    ? "http://127.0.0.1:5500/index.html"
+    : "https://alchimiste0.github.io/index.html";
 const SCOPES = [
     "user-read-private", "playlist-read-private", 
     "user-read-playback-state", "user-modify-playback-state"
@@ -61,8 +64,8 @@ async function getPlaylists() { try { return (await fetchWebApi("me/playlists?li
 async function getTracks(pId) { try { return (await fetchWebApi(`playlists/${pId}/tracks`)).items; } catch (e) { console.error("Erreur getTracks:", e); return []; } }
 async function play(contextUri, trackUri = null) {
     try {
-        const body = contextUri ? { context_uri: contextUri } : { uris: [trackUri] };
-        if (trackUri && contextUri) { body.offset = { uri: trackUri }; }
+        const body = { context_uri: contextUri };
+        if (trackUri) { body.offset = { uri: trackUri }; }
         await fetchWebApi("me/player/play", 'PUT', body);
     } catch (e) { console.error("Erreur de lecture:", e); alert("Aucun appareil actif détecté."); }
 }
@@ -71,6 +74,7 @@ async function controlPlayback(action) {
     try { await fetchWebApi(`me/player/${action}`, method); } catch (e) { console.error(`Erreur ${action}:`, e); } 
 }
 async function setVolume(value) { try { await fetchWebApi(`me/player/volume?volume_percent=${value}`, 'PUT'); } catch (e) { console.error("Erreur volume:", e); } }
+async function transferPlayback(dId) { try { await fetchWebApi('me/player', 'PUT', { device_ids: [dId], play: true }); } catch (e) { console.error("Erreur de transfert:", e); } }
 
 // --- FONCTIONS D'AFFICHAGE ---
 function displayPlaylists(playlists) {
@@ -184,6 +188,7 @@ function buildPlayer() {
             </div>
         </div>
         <div id="right-controls">
+            <button id="devices-button">💻</button>
             <input type="range" id="volume-slider" value="100" max="100" class="volume-slider">
         </div>
     `;
@@ -194,6 +199,7 @@ function buildPlayer() {
     });
     document.getElementById('next-btn').addEventListener('click', () => controlPlayback('next'));
     document.getElementById('volume-slider').addEventListener('change', (e) => setVolume(e.target.value));
+    document.getElementById('devices-button').addEventListener('click', openDevicesMenu);
 }
 function updatePlayerUI(state) {
     if (!state || !state.item) { appFooter.style.visibility = 'hidden'; return; };
@@ -213,6 +219,33 @@ function updatePlayerUI(state) {
     if (state.device) {
         volumeSlider.value = state.device.volume_percent;
     }
+}
+async function openDevicesMenu() {
+    try {
+        const { devices } = await fetchWebApi('v1/me/player/devices');
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        if (devices && devices.length > 0) {
+            devices.forEach(device => {
+                const item = document.createElement('div');
+                item.className = 'context-menu-item';
+                item.textContent = `${device.is_active ? '✔ ' : ''}${device.name}`;
+                item.onclick = () => {
+                    transferPlayback(device.id);
+                    document.body.removeChild(menu);
+                };
+                menu.appendChild(item);
+            });
+        } else {
+            menu.innerHTML = `<div class="context-menu-item">Aucun appareil trouvé</div>`;
+        }
+        document.body.appendChild(menu);
+        const btn = document.getElementById('devices-button');
+        const rect = btn.getBoundingClientRect();
+        menu.style.left = `${rect.left}px`;
+        menu.style.top = `${rect.top - menu.offsetHeight - 10}px`;
+        setTimeout(() => document.addEventListener('click', () => document.body.removeChild(menu), { once: true }), 0);
+    } catch(e) { console.error("Erreur ouverture menu appareils:", e); }
 }
 
 // --- LOGIQUE DE MISE À JOUR EN TEMPS RÉEL ---
@@ -263,8 +296,7 @@ function buildMenus() {
     });
 }
 function deconnecterEtRecharger() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    localStorage.clear();
     window.location.reload();
 }
 async function appliquerFiltre(type_filtre) {
@@ -293,7 +325,7 @@ function toggle_favori(playlist_uri, isChecked) {
 // --- LOGIQUE PRINCIPALE ---
 async function main() {
     showView('app-view');
-    loginView.classList.remove('active'); // Force la disparition
+    loginView.style.display = 'none'; // Force la disparition
     buildMenus();
     buildPlayer();
     fullPlaylistsCache = await getPlaylists();
@@ -311,20 +343,23 @@ window.addEventListener('load', async () => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     if (code) {
-        const { access_token, refresh_token } = await getAccessToken(code);
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('refresh_token', refresh_token);
-        window.history.pushState({}, '', REDIRECT_URI);
-        main();
+        try {
+            const { access_token, refresh_token } = await getAccessToken(code);
+            localStorage.setItem('access_token', access_token);
+            localStorage.setItem('refresh_token', refresh_token);
+            window.history.pushState({}, '', REDIRECT_URI);
+            main();
+        } catch (error) { showView('login-view'); }
     } else if (localStorage.getItem('refresh_token')) {
-        await refreshAccessToken();
-        main();
+        try {
+            await refreshAccessToken();
+            main();
+        } catch (error) { deconnecterEtRecharger(); }
     } else {
         showView('login-view');
     }
 });
 
-// Gestion des menus
 loginButton.addEventListener("click", redirectToAuthCodeFlow);
 window.addEventListener('click', function(event) {
     if (!event.target.matches('.menubtn')) {
