@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Web App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    
+    <div class="app-container">
+        <!-- Écran de connexion (superposé) -->
+        <div id="login-view" class="view active">
+            <h1>Spotify Web App</h1>
+            <p>Contrôlez votre musique depuis votre navigateur.</p>
+            <button id="login-button">Se connecter avec Spotify</button>
+        </div>
+
+        <!-- Vue principale de l'application (superposée) -->
+        <div id="app-view" class="view">
+            
+            <header id="app-header">
+                <div id="header-left">
+                    <div class="dropdown">
+                        <button class="menubtn">Paramètres</button>
+                        <div id="settings-menu" class="dropdown-content"></div>
+                    </div>
+                    <div class="dropdown">
+                        <button class="menubtn">Filtre</button>
+                        <div id="filter-menu" class="dropdown-content"></div>
+                    </div>
+                </div>
+                <div id="header-center">
+                    <h1>Spotify Web App</h1>
+                </div>
+                <div id="header-right"></div>
+            </header>
+
+            <main id="app-main">
+                <div id="left-pane">
+                    <div id="playlists-grid"></div>
+                </div>
+                <div id="right-pane">
+                    <div id="tracks-container">
+                        <p class="placeholder-text">Cliquez sur une playlist pour voir ses pistes.</p>
+                    </div>
+                </div>
+            </main>
+
+            <footer id="app-footer"></footer>
+
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
