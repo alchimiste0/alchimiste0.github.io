@@ -1,57 +1,198 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify Web App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Social Planner</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-    
-    <div class="app-container">
-        <!-- Écran de connexion (superposé) -->
-        <div id="login-view" class="view active">
-            <h1>Spotify Web App</h1>
-            <p>Contrôlez votre musique depuis votre navigateur.</p>
-            <button id="login-button">Se connecter avec Spotify</button>
-        </div>
 
-        <!-- Vue principale de l'application (superposée) -->
-        <div id="app-view" class="view">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h1 data-i18n="welcome">Bienvenue</h1>
+            <p data-i18n="login_subtitle">Connecte-toi pour accéder à ton espace.</p>
             
-            <header id="app-header">
-                <div id="header-left">
-                    <div class="dropdown">
-                        <button class="menubtn">Paramètres</button>
-                        <div id="settings-menu" class="dropdown-content"></div>
-                    </div>
-                    <div class="dropdown">
-                        <button class="menubtn">Filtre</button>
-                        <div id="filter-menu" class="dropdown-content"></div>
-                    </div>
+            <div class="email-login">
+                <input type="email" id="email-input" placeholder="Email" required>
+                <input type="password" id="password-input" placeholder="Password" required>
+                <div class="auth-buttons">
+                    <button id="signin-btn" class="btn-primary" data-i18n="btn_login">Se connecter</button>
+                    <button id="signup-btn" class="btn-secondary" data-i18n="btn_signup">Créer compte</button>
                 </div>
-                <div id="header-center">
-                    <h1>Spotify Web App</h1>
-                </div>
-                <div id="header-right"></div>
-            </header>
-
-            <main id="app-main">
-                <div id="left-pane">
-                    <div id="playlists-grid"></div>
-                </div>
-                <div id="right-pane">
-                    <div id="tracks-container">
-                        <p class="placeholder-text">Cliquez sur une playlist pour voir ses pistes.</p>
-                    </div>
-                </div>
-            </main>
-
-            <footer id="app-footer"></footer>
-
+                <p id="auth-error"></p>
+            </div>
+            <div class="separator">OU</div>
+            <button id="google-btn" class="google-btn"><i class="fab fa-google"></i> Google</button>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- APP SCREEN -->
+    <div id="app-screen" class="hidden">
+        
+        <header>
+            <div class="user-info" id="open-profile-btn">
+                <img id="header-avatar" src="" alt="Avatar">
+                <div class="header-text">
+                    <span id="header-name">User</span>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button id="lang-toggle">FR</button>
+                <button id="theme-toggle"><i class="fas fa-sun"></i></button>
+                <button id="logout-btn"><i class="fas fa-sign-out-alt"></i></button>
+            </div>
+        </header>
+
+        <div class="container" id="main-container">
+            <!-- Sidebar (Liste) -->
+            <section class="sidebar" id="sidebar-view">
+                <div class="sidebar-tabs">
+                    <button id="tab-btn-events" class="tab-btn active">
+                        <i class="fas fa-calendar-alt"></i> 
+                        <span data-i18n="tab_events">Events</span>
+                        <span id="notif-events" class="notif-badge hidden"></span>
+                    </button>
+                    <button id="tab-btn-friends" class="tab-btn">
+                        <i class="fas fa-user-friends"></i> 
+                        <span data-i18n="tab_friends">Amis</span>
+                        <span id="notif-friends" class="notif-badge hidden"></span>
+                    </button>
+                </div>
+
+                <!-- Onglet Événements -->
+                <div id="tab-content-events" class="tab-content active">
+                    <div class="sidebar-header">
+                        <h2 data-i18n="my_events">Mes Événements</h2>
+                        <div class="header-actions">
+                            <button id="open-join-event-btn" class="add-btn" style="background:#28a745; margin-right:5px;"><i class="fas fa-link"></i></button>
+                            <button id="open-create-event-btn" class="add-btn">+</button>
+                        </div>
+                    </div>
+                    <div id="events-list"></div>
+                </div>
+
+                <!-- Onglet Amis -->
+                <div id="tab-content-friends" class="tab-content hidden">
+                    <div class="add-friend-box">
+                        <input type="text" id="add-friend-input" data-i18n-placeholder="placeholder_friend_code" placeholder="Code Ami...">
+                        <button id="add-friend-btn"><i class="fas fa-user-plus"></i></button>
+                    </div>
+
+                    <div id="friend-requests-container" class="hidden">
+                        <h3 data-i18n="requests_title" style="color:#667eea">Demandes reçues</h3>
+                        <div id="friend-requests-list"></div>
+                    </div>
+
+                    <h3 data-i18n="friends_list_title">Mes Amis</h3>
+                    <div id="friends-list"></div>
+                </div>
+            </section>
+
+            <!-- Main: Tchat -->
+            <section class="main-content" id="chat-view-section">
+                <!-- Vue vide -->
+                <div id="no-event-selected">
+                    <i class="fas fa-comments" style="font-size: 3rem; margin-bottom: 10px; opacity: 0.3;"></i>
+                    <p data-i18n="select_msg">Sélectionne une conversation.</p>
+                </div>
+
+                <!-- Vue Tchat Actif -->
+                <div id="chat-view" class="hidden">
+                    <div class="chat-header">
+                        <!-- Bouton Retour (Mobile) -->
+                        <button id="mobile-back-btn" class="mobile-only"><i class="fas fa-arrow-left"></i></button>
+                        
+                        <div class="chat-info">
+                            <h3 id="chat-title">Titre</h3>
+                            <span id="chat-subtitle">Infos</span>
+                        </div>
+                        
+                        <div class="chat-actions">
+                            <!-- Bouton Code Invitation (Event Only) -->
+                            <button id="invite-code-btn" class="header-action-btn hidden" title="Copier code d'invitation"><i class="fas fa-key"></i></button>
+                            <!-- Bouton Membres (Event Only) -->
+                            <button id="members-list-btn" class="header-action-btn hidden" title="Voir les membres"><i class="fas fa-users"></i></button>
+                            <!-- Bouton Supprimer -->
+                            <button id="delete-event-btn" class="header-action-btn hidden" style="color:#ff4444"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                    
+                    <div id="chat-messages"></div>
+
+                    <form id="chat-form">
+                        <input type="text" id="chat-input" data-i18n-placeholder="placeholder_msg" placeholder="Message..." required autocomplete="off">
+                        <button type="submit"><i class="fas fa-paper-plane"></i></button>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- MODAL: CRÉATION ÉVÉNEMENT -->
+    <div id="modal-create" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 data-i18n="new_event">Nouvel Événement</h2>
+            <form id="create-event-form">
+                <input type="text" id="new-event-title" data-i18n-placeholder="event_title" placeholder="Titre" required>
+                <input type="date" id="new-event-date" required>
+                
+                <p style="margin:15px 0 5px; font-weight:bold;" data-i18n="invite_friends">Inviter des amis (facultatif) :</p>
+                <div id="users-checkbox-list"></div>
+
+                <button type="submit" class="btn-primary full-width" data-i18n="btn_create">Créer</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: REJOINDRE VIA CODE -->
+    <div id="modal-join" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 data-i18n="join_event_title">Rejoindre un événement</h2>
+            <p style="margin-bottom:10px; font-size:0.9rem;">Demande le Code d'invitation au créateur.</p>
+            <input type="text" id="join-event-code" placeholder="Code (ex: EVT-X9Z)" style="text-align:center; font-size:1.2rem; letter-spacing:2px; text-transform:uppercase;">
+            <button id="confirm-join-btn" class="btn-primary full-width" style="margin-top:10px;">Rejoindre</button>
+        </div>
+    </div>
+
+    <!-- MODAL: LISTE DES MEMBRES -->
+    <div id="modal-members" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Participants</h2>
+            <div id="members-list-container"></div>
+        </div>
+    </div>
+
+    <!-- MODAL: PROFIL -->
+    <div id="modal-profile" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 data-i18n="my_profile">Mon Profil</h2>
+            <div class="profile-edit">
+                <div style="text-align:center; margin-bottom:15px;">
+                    <img id="preview-avatar" src="" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:2px solid #667eea;">
+                </div>
+                <div class="friend-code-display">
+                    <span data-i18n="my_code">Mon Code Ami : </span>
+                    <strong id="profile-friend-code" style="color: #667eea; font-size: 1.2rem;">...</strong>
+                </div>
+                <label data-i18n="change_photo">Changer la photo</label>
+                <input type="file" id="file-photo" accept="image/*">
+                <label style="margin-top:10px;" data-i18n="display_name">Nom d'affichage</label>
+                <input type="text" id="edit-name">
+                <button id="save-profile-btn" class="btn-primary" style="margin-top:15px;" data-i18n="btn_save">Sauvegarder</button>
+            </div>
+            <hr style="margin: 20px 0; border-color: #444;">
+            <button id="delete-account-btn" class="btn-danger" data-i18n="btn_delete_acc">Supprimer mon compte</button>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
 </body>
 </html>
