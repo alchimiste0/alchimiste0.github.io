@@ -12,7 +12,7 @@ import {
 
 // --- TA CONFIGURATION FIREBASE (RECOPIÉE DEPUIS TON IMAGE) ---
 const firebaseConfig = {
-    apiKey: "AIzaSyDsmjGX7FMux4ACLxql_RVSCQDh9L99mNU",
+    apiKey: "AIzaSyDSmjGX7FMux4ACLxql_RVSCQDh9L99mNU",
     authDomain: "moneventplanner-1.firebaseapp.com",
     projectId: "moneventplanner-1",
     storageBucket: "moneventplanner-1.firebasestorage.app",
