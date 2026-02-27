@@ -24,21 +24,21 @@
 
 /* RESET GLOBAL */
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-button { font-family: inherit; }
+html, body { 
+    height: 100%; 
+    width: 100%; 
+    overflow: hidden; /* CRUCIAL : Interdit de dépasser l'écran */
+}
 
-/* BODY : EMPÊCHE LE SCROLL DE TOUTE LA PAGE */
 body { 
     background-color: var(--bg-color); 
     color: var(--text-color); 
-    height: 100vh; /* Prend toute la hauteur de l'écran */
-    width: 100vw;
-    overflow: hidden; /* CRUCIAL : Empêche la page entière de scroller */
     display: flex; 
     flex-direction: column; 
 }
 .hidden { display: none !important; }
 
-/* LOGIN */
+/* LOGIN (Reste par dessus) */
 #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); }
 .login-box { background: white; color: #333; padding: 2rem; border-radius: 10px; width: 90%; max-width: 350px; text-align: center; }
 .email-login { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
@@ -49,7 +49,7 @@ input { padding: 10px; border-radius: 5px; border: 1px solid #ccc; width: 100%; 
 .google-btn { width: 100%; padding: 10px; background: #db4437; color: white; border: none; border-radius: 5px; cursor: pointer; margin-top: 10px; }
 .separator { margin: 10px 0; font-size: 0.8rem; color: #888; }
 
-/* HEADER (FIXE EN HAUT) */
+/* HEADER FIXE EN HAUT */
 header { 
     background: var(--header-bg); 
     padding: 0 15px; 
@@ -59,20 +59,17 @@ header {
     border-bottom: 1px solid var(--border-color); 
     height: 60px; 
     flex-shrink: 0; /* Ne rétrécit jamais */
-    width: 100%;
 }
 .user-info { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 #header-avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-color); }
 .controls button { background: transparent; border: 1px solid var(--border-color); color: var(--text-color); padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-left: 5px; }
 
-/* LAYOUT PRINCIPAL (Prend le reste de la place) */
+/* CONTENEUR PRINCIPAL */
 .container { 
     display: flex; 
-    flex: 1; /* Prend tout l'espace restant sous le header */
-    height: calc(100vh - 60px); /* Hauteur exacte restante */
-    overflow: hidden; /* Empêche tout débordement ici */
-    position: relative; 
+    height: calc(100vh - 60px); /* Prend EXACTEMENT le reste de l'écran */
     width: 100%;
+    overflow: hidden; 
 }
 
 /* SIDEBAR */
@@ -82,12 +79,12 @@ header {
     border-right: 1px solid var(--border-color); 
     display: flex; 
     flex-direction: column; 
-    height: 100%; 
-    flex-shrink: 0;
+    height: 100%;
+    flex-shrink: 0; 
 }
 .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
 .tab-btn { flex: 1; padding: 15px; background: transparent; border: none; color: var(--text-color); cursor: pointer; opacity: 0.6; position: relative; }
-.tab-btn.active { opacity: 1; border-bottom: 2px solid var(--accent-color); background: rgba(102, 126, 234, 0.1); }
+.tab-btn.active { opacity: 1; border-bottom: 2px solid var(--accent-color); background: rgba(100,100,100,0.1); }
 .notif-badge { position: absolute; top: 10px; right: 20px; width: 8px; height: 8px; background: #ff4444; border-radius: 50%; }
 
 .tab-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -96,8 +93,8 @@ header {
 
 #events-list, #friends-list, #friend-requests-list { flex: 1; overflow-y: auto; padding: 10px; }
 
-/* ITEMS LISTE */
-.list-item { padding: 12px; border-radius: 8px; cursor: pointer; margin-bottom: 5px; background: var(--header-bg); display: flex; align-items: center; gap: 10px; position: relative; border: 1px solid transparent; }
+/* ITEMS */
+.list-item { padding: 12px; border-radius: 8px; cursor: pointer; margin-bottom: 5px; background: var(--header-bg); display: flex; align-items: center; gap: 10px; position: relative; }
 .list-item:hover { background: rgba(255,255,255,0.05); }
 .list-item.active { border: 1px solid var(--accent-color); background: rgba(102, 126, 234, 0.1); }
 .item-img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
@@ -106,17 +103,17 @@ header {
 .item-subtitle { font-size: 0.8rem; opacity: 0.7; }
 .remove-friend-btn { background: none; color: #ff4444; border: none; padding: 5px; cursor: pointer; font-size: 1rem; }
 
-/* --- TCHAT PRINCIPAL (C'est ici la correction importante) --- */
+/* --- TCHAT PRINCIPAL (C'est ici que ça se joue) --- */
 .main-content { 
     flex: 1; 
     display: flex; 
     flex-direction: column; 
     background: var(--bg-color); 
     height: 100%; 
-    overflow: hidden; /* Empêche le tchat de déborder sur le body */
-    position: relative; 
+    min-width: 0; /* Important pour flexbox */
 }
 
+/* Entête Tchat */
 .chat-header { 
     padding: 0 15px; 
     background: var(--header-bg); 
@@ -125,23 +122,22 @@ header {
     align-items: center; 
     gap: 10px; 
     height: 60px; 
-    flex-shrink: 0; /* Header fixe */
+    flex-shrink: 0; /* Ne doit jamais rétrécir */
 }
 .chat-info { flex: 1; overflow: hidden; }
 .chat-title { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-actions { display: flex; gap: 8px; }
 .header-action-btn { background: transparent; border: 1px solid var(--border-color); color: var(--text-color); width: 36px; height: 36px; border-radius: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
-.header-action-btn:hover { background: rgba(255,255,255,0.1); }
 
-/* ZONE DES MESSAGES (Correction du Scroll) */
+/* LISTE DES MESSAGES (Zone Scrollable) */
 #chat-messages { 
-    flex: 1; /* Prend tout l'espace disponible */
-    overflow-y: auto; /* Active le scroll vertical */
+    flex-grow: 1; /* Prend toute la place disponible */
+    overflow-y: auto; /* Scroll vertical */
     padding: 15px; 
     display: flex; 
     flex-direction: column; 
-    gap: 8px; 
-    min-height: 0; /* CORRECTION BUG FLEXBOX : Permet de rétrécir pour activer le scroll */
+    gap: 10px; 
+    min-height: 0; /* CRUCIAL pour que le scroll apparaisse */
 }
 
 .message { max-width: 80%; padding: 8px 12px; border-radius: 15px; font-size: 0.95rem; word-wrap: break-word; }
@@ -149,18 +145,18 @@ header {
 .other-msg { align-self: flex-start; background: var(--msg-bg-other); color: var(--text-color); border-bottom-left-radius: 2px; }
 .msg-author { font-size: 0.7rem; opacity: 0.7; display: block; margin-bottom: 2px; font-weight: bold; }
 
-/* BARRE DE SAISIE (Fixe en bas) */
+/* BARRE D'ÉCRITURE (Zone Fixe en bas) */
 #chat-form { 
-    padding: 10px; 
+    padding: 15px; 
     background: var(--header-bg); 
     display: flex; 
     gap: 10px; 
     border-top: 1px solid var(--border-color); 
-    flex-shrink: 0; /* Ne s'écrase jamais */
+    flex-shrink: 0; /* INTERDIT de rétrécir ou disparaître */
     width: 100%;
 }
-#chat-input { flex: 1; padding: 10px 15px; border-radius: 20px; border: none; background: var(--input-bg); color: var(--text-color); outline: none; }
-#chat-form button { background: none; border: none; color: var(--accent-color); font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; }
+#chat-input { flex: 1; padding: 12px 15px; border-radius: 20px; border: none; background: var(--input-bg); color: var(--text-color); outline: none; }
+#chat-form button { background: none; border: none; color: var(--accent-color); font-size: 1.5rem; cursor: pointer; display: flex; align-items: center; }
 
 /* MODALS */
 .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 2000; }
@@ -177,12 +173,10 @@ header {
 @media (max-width: 768px) {
     .mobile-only { display: block; background: none; border: none; color: var(--text-color); font-size: 1.2rem; cursor: pointer; margin-right: 5px; }
     
-    /* Sur mobile, on superpose les vues */
-    .container { position: relative; }
+    .container { position: relative; height: calc(100vh - 60px); }
     .sidebar { width: 100%; position: absolute; z-index: 10; height: 100%; }
-    .main-content { width: 100%; position: absolute; z-index: 20; height: 100%; display: none; background: var(--bg-color); }
+    .main-content { width: 100%; position: absolute; z-index: 20; height: 100%; display: none; }
     
-    /* Quand le tchat est actif */
     .container.mobile-chat-active .sidebar { display: none; }
     .container.mobile-chat-active .main-content { display: flex; }
 }
