@@ -2,14 +2,17 @@
 <html lang="fr" data-theme="dark">
 <head>
     <meta charset="UTF-8">
+    <!-- Viewport optimisé pour mobile (empêche le zoom involontaire) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Social Planner</title>
+    <!-- Lien vers le CSS (Doit être dans le même dossier) -->
     <link rel="stylesheet" href="style.css">
+    <!-- Icônes FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
 
-    <!-- LOGIN SCREEN -->
+    <!-- ÉCRAN DE CONNEXION -->
     <div id="login-screen">
         <div class="login-box">
             <h1 data-i18n="welcome">Bienvenue</h1>
@@ -17,26 +20,27 @@
             
             <div class="email-login">
                 <input type="email" id="email-input" placeholder="Email" required>
-                <input type="password" id="password-input" placeholder="Password" required>
+                <input type="password" id="password-input" placeholder="Mot de passe" required>
                 <div class="auth-buttons">
                     <button id="signin-btn" class="btn-primary" data-i18n="btn_login">Se connecter</button>
                     <button id="signup-btn" class="btn-secondary" data-i18n="btn_signup">Créer compte</button>
                 </div>
-                <p id="auth-error"></p>
+                <p id="auth-error" style="color:red; font-size:0.8rem; margin-top:5px;"></p>
             </div>
             <div class="separator">OU</div>
-            <button id="google-btn" class="google-btn"><i class="fab fa-google"></i> Google</button>
+            <button id="google-btn" class="google-btn"><i class="fab fa-google"></i> Continuer avec Google</button>
         </div>
     </div>
 
-    <!-- APP SCREEN -->
+    <!-- ÉCRAN DE L'APPLICATION (Caché par défaut) -->
     <div id="app-screen" class="hidden">
         
+        <!-- En-tête -->
         <header>
             <div class="user-info" id="open-profile-btn">
                 <img id="header-avatar" src="" alt="Avatar">
                 <div class="header-text">
-                    <span id="header-name">User</span>
+                    <span id="header-name">Utilisateur</span>
                 </div>
             </div>
             
@@ -47,9 +51,11 @@
             </div>
         </header>
 
+        <!-- Conteneur Principal -->
         <div class="container" id="main-container">
-            <!-- Sidebar (Liste) -->
-            <section class="sidebar" id="sidebar-view">
+            
+            <!-- Sidebar (Liste des événements et amis) -->
+            <section class="sidebar">
                 <div class="sidebar-tabs">
                     <button id="tab-btn-events" class="tab-btn active">
                         <i class="fas fa-calendar-alt"></i> 
@@ -63,19 +69,21 @@
                     </button>
                 </div>
 
-                <!-- Onglet Événements -->
+                <!-- Contenu Onglet Événements -->
                 <div id="tab-content-events" class="tab-content active">
                     <div class="sidebar-header">
                         <h2 data-i18n="my_events">Mes Événements</h2>
                         <div class="header-actions">
-                            <button id="open-join-event-btn" class="add-btn" style="background:#28a745; margin-right:5px;"><i class="fas fa-link"></i></button>
-                            <button id="open-create-event-btn" class="add-btn">+</button>
+                            <button id="open-join-event-btn" class="add-btn" style="background:#28a745; margin-right:5px;" title="Rejoindre via code"><i class="fas fa-link"></i></button>
+                            <button id="open-create-event-btn" class="add-btn" title="Créer un événement">+</button>
                         </div>
                     </div>
-                    <div id="events-list"></div>
+                    <div id="events-list">
+                        <!-- La liste des événements s'affichera ici -->
+                    </div>
                 </div>
 
-                <!-- Onglet Amis -->
+                <!-- Contenu Onglet Amis -->
                 <div id="tab-content-friends" class="tab-content hidden">
                     <div class="add-friend-box">
                         <input type="text" id="add-friend-input" data-i18n-placeholder="placeholder_friend_code" placeholder="Code Ami...">
@@ -83,18 +91,20 @@
                     </div>
 
                     <div id="friend-requests-container" class="hidden">
-                        <h3 data-i18n="requests_title" style="color:#667eea">Demandes reçues</h3>
+                        <h3 data-i18n="requests_title" style="color:#667eea; padding: 10px 10px 0;">Demandes reçues</h3>
                         <div id="friend-requests-list"></div>
                     </div>
 
-                    <h3 data-i18n="friends_list_title">Mes Amis</h3>
-                    <div id="friends-list"></div>
+                    <h3 data-i18n="friends_list_title" style="padding: 10px 10px 0;">Mes Amis</h3>
+                    <div id="friends-list">
+                        <!-- La liste des amis s'affichera ici -->
+                    </div>
                 </div>
             </section>
 
-            <!-- Main: Tchat -->
-            <section class="main-content" id="chat-view-section">
-                <!-- Vue vide -->
+            <!-- Section Tchat -->
+            <section class="main-content">
+                <!-- Vue vide (quand aucun tchat n'est sélectionné) -->
                 <div id="no-event-selected">
                     <i class="fas fa-comments" style="font-size: 3rem; margin-bottom: 10px; opacity: 0.3;"></i>
                     <p data-i18n="select_msg">Sélectionne une conversation.</p>
@@ -103,25 +113,25 @@
                 <!-- Vue Tchat Actif -->
                 <div id="chat-view" class="hidden">
                     <div class="chat-header">
-                        <!-- Bouton Retour (Mobile) -->
+                        <!-- Bouton Retour (Visible uniquement sur mobile) -->
                         <button id="mobile-back-btn" class="mobile-only"><i class="fas fa-arrow-left"></i></button>
                         
                         <div class="chat-info">
                             <h3 id="chat-title">Titre</h3>
-                            <span id="chat-subtitle">Infos</span>
+                            <span id="chat-subtitle" style="font-size: 0.8rem; opacity: 0.7;">Infos</span>
                         </div>
                         
                         <div class="chat-actions">
-                            <!-- Bouton Code Invitation (Event Only) -->
+                            <!-- Boutons d'actions contextuels -->
                             <button id="invite-code-btn" class="header-action-btn hidden" title="Copier code d'invitation"><i class="fas fa-key"></i></button>
-                            <!-- Bouton Membres (Event Only) -->
                             <button id="members-list-btn" class="header-action-btn hidden" title="Voir les membres"><i class="fas fa-users"></i></button>
-                            <!-- Bouton Supprimer -->
-                            <button id="delete-event-btn" class="header-action-btn hidden" style="color:#ff4444"><i class="fas fa-trash"></i></button>
+                            <button id="delete-event-btn" class="header-action-btn hidden" style="color:#ff4444" title="Supprimer"><i class="fas fa-trash"></i></button>
                         </div>
                     </div>
                     
-                    <div id="chat-messages"></div>
+                    <div id="chat-messages">
+                        <!-- Les messages s'afficheront ici -->
+                    </div>
 
                     <form id="chat-form">
                         <input type="text" id="chat-input" data-i18n-placeholder="placeholder_msg" placeholder="Message..." required autocomplete="off">
@@ -193,6 +203,7 @@
         </div>
     </div>
 
+    <!-- SCRIPT (Correction du lien pour éviter l'erreur 404) -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
