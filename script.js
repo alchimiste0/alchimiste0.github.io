@@ -1,387 +1,377 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { 
-    getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
-    createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, deleteUser
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { 
-    getFirestore, collection, addDoc, query, orderBy, onSnapshot, deleteDoc, doc, setDoc, getDoc, getDocs, where, serverTimestamp, updateDoc, arrayUnion, arrayRemove
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { 
-    getStorage, ref, uploadBytes, getDownloadURL 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+// --- CONFIGURATION ---
+const CLIENT_ID = "5bc17dabfc0945b7b6ba5ee2989a25f1";
+const IS_LOCALHOST = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+const REDIRECT_URI = IS_LOCALHOST 
+    ? "http://127.0.0.1:5500/index.html"
+    : "https://alchimiste0.github.io/index.html";
+const SCOPES = [
+    "user-read-private", "playlist-read-private", 
+    "user-read-playback-state", "user-modify-playback-state"
+];
 
-// --- TA CONFIGURATION FIREBASE (RECOPIÉE DEPUIS TON IMAGE) ---
-const firebaseConfig = {
-    apiKey: "AIzaSyDSmjGX7FMux4ACLxql_RVSCQDh9L99mNU",
-    authDomain: "moneventplanner-1.firebaseapp.com",
-    projectId: "moneventplanner-1",
-    storageBucket: "moneventplanner-1.firebasestorage.app",
-    messagingSenderId: "47840441468",
-    appId: "1:47840441468:web:78581503b37dbadec6c5f9"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-const provider = new GoogleAuthProvider();
-
-const DEFAULT_AVATAR = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-
-let currentUser = null;
-let currentChatType = null;
-let currentChatId = null;
-let currentUnsubscribeChat = null;
-let userDataCache = {};
-let currentLang = 'fr';
-
-const translations = {
-    fr: {
-        welcome: "Bienvenue", login_subtitle: "Connecte-toi.", btn_login: "Se connecter", btn_signup: "Créer compte",
-        tab_events: "Events", tab_friends: "Amis", my_events: "Mes Événements", placeholder_friend_code: "Code Ami...",
-        requests_title: "Demandes reçues", friends_list_title: "Mes Amis", select_msg: "Sélectionne une conversation.",
-        placeholder_msg: "Message...", new_event: "Nouvel Événement", event_title: "Titre", invite_friends: "Inviter :",
-        btn_create: "Créer", my_profile: "Mon Profil", my_code: "Mon Code Ami : ", change_photo: "Changer la photo", display_name: "Nom d'affichage",
-        btn_save: "Sauvegarder", btn_delete_acc: "Supprimer mon compte", join_event_title: "Rejoindre via Code"
-    },
-    en: {
-        welcome: "Welcome", login_subtitle: "Login.", btn_login: "Login", btn_signup: "Sign Up",
-        tab_events: "Events", tab_friends: "Friends", my_events: "My Events", placeholder_friend_code: "Friend Code...",
-        requests_title: "Requests", friends_list_title: "My Friends", select_msg: "Select a chat.",
-        placeholder_msg: "Message...", new_event: "New Event", event_title: "Title", invite_friends: "Invite:",
-        btn_create: "Create", my_profile: "My Profile", my_code: "My Code: ", change_photo: "Change Photo", display_name: "Display Name",
-        btn_save: "Save", btn_delete_acc: "Delete Account", join_event_title: "Join via Code"
-    }
-};
-
-// --- AUTH ---
-function generateCode(prefix = "") { return prefix + Math.random().toString(36).substring(2, 6).toUpperCase(); }
-
-async function syncUserToFirestore(user) {
-    const userRef = doc(db, "users", user.uid);
-    const userSnap = await getDoc(userRef);
-    let data = { uid: user.uid, displayName: user.displayName || user.email.split('@')[0], email: user.email, photoURL: user.photoURL || DEFAULT_AVATAR, lastSeen: serverTimestamp() };
-    if (!userSnap.exists()) {
-        data.friendCode = generateCode();
-        data.friends = []; data.friendRequestsSent = []; data.friendRequestsReceived = [];
-    }
-    await setDoc(userRef, data, { merge: true });
-    return userSnap.exists() ? userSnap.data() : data;
+// --- GESTION DES FAVORIS ---
+const FAVORIS_KEY = "spotify_favoris";
+let favoris_playlists = new Set(JSON.parse(localStorage.getItem(FAVORIS_KEY) || "[]"));
+function sauvegarder_favoris() {
+    localStorage.setItem(FAVORIS_KEY, JSON.stringify(Array.from(favoris_playlists)));
 }
 
-onAuthStateChanged(auth, async (user) => {
-    currentUser = user;
-    if (user) {
-        const syncedData = await syncUserToFirestore(user);
-        currentUser.fullData = syncedData;
-        updateHeaderUI(user);
-        document.getElementById('login-screen').classList.add('hidden');
-        document.getElementById('app-screen').classList.remove('hidden');
-        initEventsList();
-        initFriendsSystem();
+// --- ÉLÉMENTS DE LA PAGE ---
+const loginView = document.getElementById("login-view");
+const appView = document.getElementById("app-view");
+const playlistsGrid = document.getElementById("playlists-grid");
+const tracksContainer = document.getElementById("tracks-container");
+const loginButton = document.getElementById("login-button");
+const appFooter = document.getElementById("app-footer");
+
+// --- VARIABLES D'ÉTAT ---
+let currentTrackUri = null;
+let currentPlaylistUri = null;
+let activePlaylistData = null; 
+let filtre_actif = 'tous';
+let fullPlaylistsCache = [];
+let currentUser = null;
+
+// --- LOGIQUE DE NAVIGATION ---
+function showView(viewId) {
+    document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+    const activeView = document.getElementById(viewId);
+    if (activeView) activeView.classList.add('active');
+}
+
+// --- LOGIQUE D'AUTHENTIFICATION ---
+function generateRandomString(length) { let t = ''; const p = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; for (let i = 0; i < length; i++) { t += p.charAt(Math.floor(Math.random() * p.length)); } return t; }
+async function generateCodeChallenge(v) { const d = new TextEncoder().encode(v); const h = await window.crypto.subtle.digest('SHA-256', d); return btoa(String.fromCharCode.apply(null, new Uint8Array(h))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+async function redirectToAuthCodeFlow() { const v = generateRandomString(128); const c = await generateCodeChallenge(v); localStorage.setItem("verifier", v); const p = new URLSearchParams({ client_id: CLIENT_ID, response_type: 'code', redirect_uri: REDIRECT_URI, scope: SCOPES.join(' '), code_challenge_method: 'S256', code_challenge: c }); document.location = `https://accounts.spotify.com/authorize?${p.toString()}`; }
+async function getAccessToken(c) { const v = localStorage.getItem("verifier"); const p = new URLSearchParams({ client_id: CLIENT_ID, grant_type: 'authorization_code', code: c, redirect_uri: REDIRECT_URI, code_verifier: v }); const r = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: p }); const { access_token, refresh_token } = await r.json(); return { access_token, refresh_token }; }
+async function refreshAccessToken() { const r = localStorage.getItem('refresh_token'); const p = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: r, client_id: CLIENT_ID }); const res = await fetch("https://accounts.spotify.com/api/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: p }); const { access_token, refresh_token: n } = await res.json(); if (n) { localStorage.setItem('refresh_token', n); } localStorage.setItem('access_token', access_token); return access_token; }
+
+// --- FONCTIONS DE L'API SPOTIFY ---
+async function fetchWebApi(endpoint, method = 'GET', body = null) {
+    let accessToken = localStorage.getItem('access_token');
+    if (!endpoint.startsWith('v1/')) { endpoint = `v1/${endpoint}`; }
+    const res = await fetch(`https://api.spotify.com/${endpoint}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        method,
+        body: body ? JSON.stringify(body) : null
+    });
+    if (res.status === 401) { accessToken = await refreshAccessToken(); return await fetchWebApi(endpoint, method, body); }
+    if (!res.ok) throw new Error(`Erreur API ${res.status}: ${res.statusText}`);
+    if (res.status === 204 || res.status === 202) return null;
+    return await res.json();
+}
+async function getPlaylists() { try { return (await fetchWebApi("me/playlists?limit=50")).items; } catch (e) { console.error("Erreur getPlaylists:", e); return []; } }
+async function getTracks(pId) { try { return (await fetchWebApi(`playlists/${pId}/tracks`)).items; } catch (e) { console.error("Erreur getTracks:", e); return []; } }
+async function play(contextUri, trackUri = null) {
+    try {
+        const body = { context_uri: contextUri };
+        if (trackUri) { body.offset = { uri: trackUri }; }
+        await fetchWebApi("me/player/play", 'PUT', body);
+    } catch (e) { console.error("Erreur de lecture:", e); alert("Aucun appareil actif détecté."); }
+}
+async function controlPlayback(action) { 
+    const method = (action === 'play' || action === 'pause') ? 'PUT' : 'POST';
+    try { await fetchWebApi(`me/player/${action}`, method); } catch (e) { console.error(`Erreur ${action}:`, e); } 
+}
+async function setVolume(value) { try { await fetchWebApi(`me/player/volume?volume_percent=${value}`, 'PUT'); } catch (e) { console.error("Erreur volume:", e); } }
+async function transferPlayback(dId) { try { await fetchWebApi('me/player', 'PUT', { device_ids: [dId], play: true }); } catch (e) { console.error("Erreur de transfert:", e); } }
+
+// --- FONCTIONS D'AFFICHAGE ---
+function displayPlaylists(playlists) {
+    playlistsGrid.innerHTML = "";
+    if (!playlists || playlists.length === 0) return;
+    for (const playlist of playlists) {
+        const item = document.createElement("div");
+        item.className = "playlist-item";
+        item.dataset.uri = playlist.uri;
+
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = favoris_playlists.has(playlist.uri);
+        check.style.position = 'absolute';
+        check.style.top = '10px';
+        check.style.left = '10px';
+        check.style.zIndex = '10';
+        check.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggle_favori(playlist.uri, e.target.checked);
+        });
+
+        const imgUrl = (playlist.images && playlist.images.length > 0) ? playlist.images[0].url : 'https://placehold.co/150';
+        const img = document.createElement('img');
+        img.src = imgUrl;
+        img.addEventListener('click', async () => {
+            activePlaylistData = playlist;
+            const tracks = await getTracks(playlist.id);
+            displayTracks(tracks, playlist);
+        });
+        const title = document.createElement('p');
+        title.textContent = playlist.name;
+        if (playlist.uri === currentPlaylistUri) title.classList.add('active');
+        title.addEventListener('click', async () => {
+            activePlaylistData = playlist;
+            const tracks = await getTracks(playlist.id);
+            displayTracks(tracks, playlist);
+        });
+        const playButton = document.createElement('button');
+        playButton.className = 'play-button';
+        playButton.innerHTML = '&#9654;';
+        playButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            play(playlist.uri);
+        });
+        item.appendChild(check);
+        item.appendChild(img);
+        item.appendChild(title);
+        item.appendChild(playButton);
+        playlistsGrid.appendChild(item);
+    }
+}
+function displayTracks(tracks, playlist) {
+    tracksContainer.innerHTML = "";
+    const header = document.createElement('div');
+    header.className = 'playlist-header';
+    const imgUrl = (playlist.images && playlist.images.length > 0) ? playlist.images[0].url : 'https://placehold.co/150';
+    const titleText = document.createElement('h2');
+    titleText.textContent = playlist.name;
+    if (playlist.uri === currentPlaylistUri) titleText.classList.add('active');
+    header.innerHTML = `<img src="${imgUrl}" alt="${playlist.name}">`;
+    header.appendChild(titleText);
+    tracksContainer.appendChild(header);
+    if (!tracks || tracks.length === 0) {
+        tracksContainer.innerHTML += "<p>Cette playlist est vide.</p>";
+        return;
+    }
+    let tracksWithData = [];
+    for (const item of tracks) {
+        const track = item.track;
+        if (!track) continue;
+        const trackItem = document.createElement("div");
+        trackItem.className = "track-item";
+        trackItem.dataset.uri = track.uri;
+        const trackImgUrl = track.album?.images[2]?.url || 'https://placehold.co/40';
+        const trackInfo = document.createElement('div');
+        trackInfo.className = 'track-info';
+        const trackTitle = document.createElement('h3');
+        trackTitle.textContent = track.name;
+        if (track.uri === currentTrackUri) trackTitle.classList.add('active');
+        const trackArtists = document.createElement('p');
+        trackArtists.textContent = track.artists.map(a => a.name).join(', ');
+        trackInfo.appendChild(trackTitle);
+        trackInfo.appendChild(trackArtists);
+        trackItem.innerHTML = `<img src="${trackImgUrl}">`;
+        trackItem.appendChild(trackInfo);
+        if (track.is_local) {
+            trackItem.style.cursor = 'not-allowed';
+            trackItem.title = 'Les pistes locales ne peuvent pas être jouées via le web';
+        } else {
+            trackItem.addEventListener("click", () => play(playlist.uri, track.uri));
+        }
+        tracksContainer.appendChild(trackItem);
+        tracksWithData.push({ element: trackTitle, uri: track.uri });
+    }
+    activePlaylistData = { ...playlist, trackElements: tracksWithData };
+}
+function buildPlayer() {
+    appFooter.innerHTML = `
+        <div id="now-playing"><img src="https://placehold.co/56" /><div id="now-playing-info"><span id="now-playing-title"></span><span id="now-playing-artist"></span></div></div>
+        <div id="player-controls">
+            <div id="player-buttons">
+                <button id="prev-btn">⏮</button>
+                <button id="play-pause-btn" class="play-pause">▶</button>
+                <button id="next-btn">⏭</button>
+            </div>
+            <div id="progress-bar-container">
+                <span id="current-time" class="time-label">0:00</span>
+                <input type="range" id="progress-bar" value="0" max="100" style="pointer-events: none;">
+                <span id="total-time" class="time-label">0:00</span>
+            </div>
+        </div>
+        <div id="right-controls">
+            <button id="devices-button">💻</button>
+            <input type="range" id="volume-slider" value="100" max="100" class="volume-slider">
+        </div>
+    `;
+    document.getElementById('prev-btn').addEventListener('click', () => controlPlayback('previous'));
+    document.getElementById('play-pause-btn').addEventListener('click', async () => {
+        const state = await fetchWebApi('v1/me/player');
+        if (state && state.is_playing) { controlPlayback('pause'); } else { controlPlayback('play'); }
+    });
+    document.getElementById('next-btn').addEventListener('click', () => controlPlayback('next'));
+    document.getElementById('volume-slider').addEventListener('change', (e) => setVolume(e.target.value));
+    document.getElementById('devices-button').addEventListener('click', openDevicesMenu);
+}
+function updatePlayerUI(state) {
+    if (!state || !state.item) { appFooter.style.visibility = 'hidden'; return; };
+    appFooter.style.visibility = 'visible';
+    document.getElementById('now-playing-title').textContent = state.item.name;
+    document.getElementById('now-playing-artist').textContent = state.item.artists.map(a => a.name).join(', ');
+    const imageUrl = state.item.album?.images[0]?.url;
+    document.getElementById('now-playing').querySelector('img').src = imageUrl || 'https://placehold.co/56';
+    document.getElementById('play-pause-btn').textContent = state.is_playing ? '⏸' : '▶';
+    const formatTime = ms => new Date(ms).toISOString().substr(14, 5);
+    document.getElementById('current-time').textContent = formatTime(state.progress_ms);
+    document.getElementById('total-time').textContent = formatTime(state.item.duration_ms);
+    const progress = document.getElementById('progress-bar');
+    progress.max = state.item.duration_ms;
+    progress.value = state.progress_ms;
+    const volumeSlider = document.getElementById('volume-slider');
+    if (state.device) {
+        volumeSlider.value = state.device.volume_percent;
+    }
+}
+async function openDevicesMenu() {
+    try {
+        const { devices } = await fetchWebApi('v1/me/player/devices');
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        if (devices && devices.length > 0) {
+            devices.forEach(device => {
+                const item = document.createElement('div');
+                item.className = 'context-menu-item';
+                item.textContent = `${device.is_active ? '✔ ' : ''}${device.name}`;
+                item.onclick = () => {
+                    transferPlayback(device.id);
+                    document.body.removeChild(menu);
+                };
+                menu.appendChild(item);
+            });
+        } else {
+            menu.innerHTML = `<div class="context-menu-item">Aucun appareil trouvé</div>`;
+        }
+        document.body.appendChild(menu);
+        const btn = document.getElementById('devices-button');
+        const rect = btn.getBoundingClientRect();
+        menu.style.left = `${rect.left}px`;
+        menu.style.top = `${rect.top - menu.offsetHeight - 10}px`;
+        setTimeout(() => document.addEventListener('click', () => document.body.removeChild(menu), { once: true }), 0);
+    } catch(e) { console.error("Erreur ouverture menu appareils:", e); }
+}
+
+// --- LOGIQUE DE MISE À JOUR EN TEMPS RÉEL ---
+async function updateActiveHighlights() {
+    try {
+        const state = await fetchWebApi('v1/me/player');
+        const oldTrackUri = currentTrackUri;
+        const oldPlaylistUri = currentPlaylistUri;
+        if (!state || !state.item) {
+            currentTrackUri = null;
+            currentPlaylistUri = null;
+        } else {
+            currentTrackUri = state.item.uri;
+            currentPlaylistUri = state.context?.uri;
+        }
+        if (oldTrackUri !== currentTrackUri || oldPlaylistUri !== currentPlaylistUri) {
+            document.querySelectorAll('#playlists-grid .playlist-item p').forEach(p => {
+                p.classList.toggle('active', p.closest('.playlist-item').dataset.uri === currentPlaylistUri);
+            });
+            if (activePlaylistData) {
+                const headerTitle = tracksContainer.querySelector('.playlist-header h2');
+                if (headerTitle) {
+                    headerTitle.classList.toggle('active', activePlaylistData.uri === currentPlaylistUri);
+                }
+                if (activePlaylistData.trackElements) {
+                    activePlaylistData.trackElements.forEach(({ element, uri }) => {
+                        element.classList.toggle('active', uri === currentTrackUri);
+                    });
+                }
+            }
+        }
+    } catch (e) { console.error("Erreur de mise à jour UI:", e); }
+}
+
+// --- FONCTIONS DES MENUS ---
+function buildMenus() {
+    const settingsMenu = document.getElementById('settings-menu');
+    const filterMenu = document.getElementById('filter-menu');
+    settingsMenu.innerHTML = `<a href="#" id="logout-btn">Déconnecter</a><hr><a href="#" id="quit-btn">Quitter</a>`;
+    filterMenu.innerHTML = `<a href="#" data-filter="tous">Tous</a><hr><a href="#" data-filter="utilisateur">Par vous</a><a href="#" data-filter="telecharges">Téléchargé(s)</a>`;
+    document.getElementById('logout-btn').addEventListener('click', (e) => { e.preventDefault(); deconnecterEtRecharger(); });
+    document.getElementById('quit-btn').addEventListener('click', (e) => { e.preventDefault(); window.close(); });
+    filterMenu.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            appliquerFiltre(e.target.dataset.filter);
+        });
+    });
+}
+function deconnecterEtRecharger() {
+    localStorage.clear();
+    window.location.reload();
+}
+async function appliquerFiltre(type_filtre) {
+    filtre_actif = type_filtre;
+    let playlists_a_afficher = fullPlaylistsCache;
+    if (filtre_actif === 'utilisateur') {
+        if (!currentUser) currentUser = await fetchWebApi('v1/me');
+        playlists_a_afficher = fullPlaylistsCache.filter(p => p.owner.id === currentUser.id);
+    } else if (filtre_actif === 'telecharges') {
+        playlists_a_afficher = fullPlaylistsCache.filter(p => favoris_playlists.has(p.uri));
+    }
+    displayPlaylists(playlists_a_afficher);
+}
+function toggle_favori(playlist_uri, isChecked) {
+    if (isChecked) {
+        favoris_playlists.add(playlist_uri);
     } else {
-        document.getElementById('login-screen').classList.remove('hidden');
-        document.getElementById('app-screen').classList.add('hidden');
-        currentChatId = null;
+        favoris_playlists.delete(playlist_uri);
+    }
+    sauvegarder_favoris();
+    if (filtre_actif === 'telecharges') {
+        appliquerFiltre('telecharges');
+    }
+}
+
+// --- LOGIQUE PRINCIPALE ---
+async function main() {
+    showView('app-view');
+    loginView.style.display = 'none'; // Force la disparition
+    buildMenus();
+    buildPlayer();
+    fullPlaylistsCache = await getPlaylists();
+    displayPlaylists(fullPlaylistsCache);
+    setInterval(updateActiveHighlights, 2000);
+    setInterval(async () => {
+        try {
+            const state = await fetchWebApi('v1/me/player');
+            updatePlayerUI(state);
+        } catch (e) {}
+    }, 1000);
+}
+
+window.addEventListener('load', async () => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+        try {
+            const { access_token, refresh_token } = await getAccessToken(code);
+            localStorage.setItem('access_token', access_token);
+            localStorage.setItem('refresh_token', refresh_token);
+            window.history.pushState({}, '', REDIRECT_URI);
+            main();
+        } catch (error) { showView('login-view'); }
+    } else if (localStorage.getItem('refresh_token')) {
+        try {
+            await refreshAccessToken();
+            main();
+        } catch (error) { deconnecterEtRecharger(); }
+    } else {
+        showView('login-view');
     }
 });
 
-document.getElementById('google-btn').onclick = () => signInWithPopup(auth, provider);
-document.getElementById('logout-btn').onclick = () => signOut(auth);
-document.getElementById('signin-btn').onclick = () => signInWithEmailAndPassword(auth, document.getElementById('email-input').value, document.getElementById('password-input').value).catch(e=>alert(e.message));
-document.getElementById('signup-btn').onclick = () => createUserWithEmailAndPassword(auth, document.getElementById('email-input').value, document.getElementById('password-input').value).then(c=>syncUserToFirestore(c.user)).catch(e=>alert(e.message));
-
-// --- UI ---
-function updateHeaderUI(user) {
-    document.getElementById('header-name').textContent = user.displayName || "User";
-    document.getElementById('header-avatar').src = user.photoURL || DEFAULT_AVATAR;
-    document.getElementById('profile-friend-code').textContent = currentUser.fullData.friendCode || "...";
-}
-
-// BOUTON RETOUR MOBILE AMÉLIORÉ
-document.getElementById('mobile-back-btn').onclick = () => {
-    document.getElementById('main-container').classList.remove('mobile-chat-active');
-    currentChatId = null;
-    document.querySelectorAll('.list-item').forEach(e => e.classList.remove('active'));
-    document.getElementById('chat-view').classList.add('hidden');
-    document.getElementById('no-event-selected').classList.remove('hidden');
-};
-
-document.getElementById('lang-toggle').onclick = () => {
-    currentLang = currentLang === 'fr' ? 'en' : 'fr';
-    document.getElementById('lang-toggle').textContent = currentLang.toUpperCase();
-    const t = translations[currentLang];
-    document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t[el.getAttribute('data-i18n')]);
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.placeholder = t[el.getAttribute('data-i18n-placeholder')]);
-};
-document.getElementById('theme-toggle').onclick = () => {
-    const html = document.documentElement;
-    html.setAttribute('data-theme', html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-};
-
-const tabEvents = document.getElementById('tab-btn-events');
-const tabFriends = document.getElementById('tab-btn-friends');
-tabEvents.onclick = () => switchTab('events');
-tabFriends.onclick = () => switchTab('friends');
-function switchTab(tab) {
-    if(tab === 'events') {
-        tabEvents.classList.add('active'); tabFriends.classList.remove('active');
-        document.getElementById('tab-content-events').classList.remove('hidden');
-        document.getElementById('tab-content-friends').classList.add('hidden');
-    } else {
-        tabFriends.classList.add('active'); tabEvents.classList.remove('active');
-        document.getElementById('tab-content-friends').classList.remove('hidden');
-        document.getElementById('tab-content-events').classList.add('hidden');
+loginButton.addEventListener("click", redirectToAuthCodeFlow);
+window.addEventListener('click', function(event) {
+    if (!event.target.matches('.menubtn')) {
+        document.querySelectorAll(".dropdown-content").forEach(content => content.classList.remove('show'));
     }
-}
-document.querySelectorAll('.close-modal').forEach(b => b.onclick = () => document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden')));
-
-// Profil
-document.getElementById('open-profile-btn').onclick = () => {
-    document.getElementById('modal-profile').classList.remove('hidden');
-    document.getElementById('edit-name').value = currentUser.displayName || "";
-    document.getElementById('preview-avatar').src = currentUser.photoURL || DEFAULT_AVATAR;
-};
-document.getElementById('save-profile-btn').onclick = async () => {
-    const newName = document.getElementById('edit-name').value;
-    const file = document.getElementById('file-photo').files[0];
-    let photoURL = currentUser.photoURL;
-    if (file) {
-        const sRef = ref(storage, `users/${currentUser.uid}/profile_${Date.now()}`);
-        await uploadBytes(sRef, file);
-        photoURL = await getDownloadURL(sRef);
-    }
-    await updateProfile(currentUser, { displayName: newName, photoURL });
-    await syncUserToFirestore(currentUser);
-    window.location.reload();
-};
-
-// --- LOGIQUE AMIS ---
-function initFriendsSystem() {
-    onSnapshot(doc(db, "users", currentUser.uid), async (docSnap) => {
-        if (!docSnap.exists()) return;
-        const data = docSnap.data();
-        currentUser.fullData = data;
-        const badge = document.getElementById('notif-friends');
-        const reqCount = data.friendRequestsReceived?.length || 0;
-        if(reqCount > 0) { badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
-
-        const reqList = document.getElementById('friend-requests-list');
-        reqList.innerHTML = "";
-        const reqContainer = document.getElementById('friend-requests-container');
-        if (reqCount > 0) {
-            reqContainer.classList.remove('hidden');
-            for (const rid of data.friendRequestsReceived) {
-                const rSnap = await getDoc(doc(db, "users", rid));
-                if (rSnap.exists()) {
-                    const rData = rSnap.data();
-                    const div = document.createElement('div');
-                    div.className = 'request-card';
-                    div.innerHTML = `<span>${rData.displayName}</span><div><button class="req-btn btn-accept"><i class="fas fa-check"></i></button><button class="req-btn btn-reject"><i class="fas fa-times"></i></button></div>`;
-                    div.querySelector('.btn-accept').onclick = () => acceptFriend(rid);
-                    div.querySelector('.btn-reject').onclick = () => rejectFriend(rid);
-                    reqList.appendChild(div);
-                }
-            }
-        } else { reqContainer.classList.add('hidden'); }
-
-        const friendsList = document.getElementById('friends-list');
-        friendsList.innerHTML = "";
-        if (data.friends?.length > 0) {
-            for (const fid of data.friends) {
-                const fSnap = await getDoc(doc(db, "users", fid));
-                if (fSnap.exists()) {
-                    const fData = fSnap.data();
-                    userDataCache[fid] = fData;
-                    const div = document.createElement('div');
-                    div.className = `list-item ${currentChatId === getConversationId(currentUser.uid, fid) ? 'active' : ''}`;
-                    div.innerHTML = `<img src="${fData.photoURL}" class="item-img"><div class="item-content"><div class="item-title">${fData.displayName}</div></div><button class="remove-friend-btn"><i class="fas fa-user-times"></i></button>`;
-                    div.onclick = (e) => { if(!e.target.closest('.remove-friend-btn')) loadDirectChat(fData); };
-                    div.querySelector('.remove-friend-btn').onclick = (e) => { e.stopPropagation(); removeFriend(fid, fData.displayName); };
-                    friendsList.appendChild(div);
-                }
-            }
-        } else { friendsList.innerHTML = "<div style='padding:10px;opacity:0.5;font-size:0.9rem'>Aucun ami.</div>"; }
-    });
-}
-document.getElementById('add-friend-btn').onclick = async () => {
-    const code = document.getElementById('add-friend-input').value.trim().toUpperCase();
-    if (!code || code === currentUser.fullData.friendCode) return;
-    const q = query(collection(db, "users"), where("friendCode", "==", code));
-    const qs = await getDocs(q);
-    if (qs.empty) return alert("Code introuvable.");
-    const target = qs.docs[0].data();
-    if (currentUser.fullData.friends.includes(target.uid)) return alert("Déjà amis.");
-    await updateDoc(doc(db, "users", target.uid), { friendRequestsReceived: arrayUnion(currentUser.uid) });
-    await updateDoc(doc(db, "users", currentUser.uid), { friendRequestsSent: arrayUnion(target.uid) });
-    alert("Demande envoyée.");
-    document.getElementById('add-friend-input').value = "";
-};
-async function acceptFriend(rid) { await updateDoc(doc(db, "users", currentUser.uid), { friends: arrayUnion(rid), friendRequestsReceived: arrayRemove(rid) }); await updateDoc(doc(db, "users", rid), { friends: arrayUnion(currentUser.uid), friendRequestsSent: arrayRemove(currentUser.uid) }); }
-async function rejectFriend(rid) { await updateDoc(doc(db, "users", currentUser.uid), { friendRequestsReceived: arrayRemove(rid) }); }
-async function removeFriend(fid, name) { if(confirm("Supprimer " + name + " ?")) { await updateDoc(doc(db, "users", currentUser.uid), { friends: arrayRemove(fid) }); await updateDoc(doc(db, "users", fid), { friends: arrayRemove(currentUser.uid) }); } }
-
-// --- EVENTS ---
-document.getElementById('open-create-event-btn').onclick = () => {
-    document.getElementById('modal-create').classList.remove('hidden');
-    const list = document.getElementById('users-checkbox-list');
-    list.innerHTML = "";
-    (currentUser.fullData.friends || []).forEach(fid => {
-        const f = userDataCache[fid];
-        if(f) {
-            const div = document.createElement('div');
-            div.className = 'user-checkbox-item';
-            div.innerHTML = `<input type="checkbox" value="${f.uid}" id="inv-${f.uid}"><img src="${f.photoURL}" class="user-mini-pic"><label for="inv-${f.uid}">${f.displayName}</label>`;
-            list.appendChild(div);
-        }
-    });
-};
-document.getElementById('create-event-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const title = document.getElementById('new-event-title').value;
-    const date = document.getElementById('new-event-date').value;
-    const att = [currentUser.uid];
-    document.querySelectorAll('#users-checkbox-list input:checked').forEach(c => att.push(c.value));
-    const inviteCode = generateCode("EVT-");
-    await addDoc(collection(db, "events"), { title, date, createdBy: currentUser.uid, attendees: att, inviteCode: inviteCode, createdAt: serverTimestamp() });
-    document.getElementById('modal-create').classList.add('hidden');
-    document.getElementById('create-event-form').reset();
-};
-document.getElementById('open-join-event-btn').onclick = () => document.getElementById('modal-join').classList.remove('hidden');
-document.getElementById('confirm-join-btn').onclick = async () => {
-    const code = document.getElementById('join-event-code').value.trim().toUpperCase();
-    if(!code) return;
-    const q = query(collection(db, "events"), where("inviteCode", "==", code));
-    const snaps = await getDocs(q);
-    if(snaps.empty) return alert("Code invalide.");
-    const evtDoc = snaps.docs[0];
-    if(evtDoc.data().attendees.includes(currentUser.uid)) { alert("Déjà membre !"); } else { await updateDoc(evtDoc.ref, { attendees: arrayUnion(currentUser.uid) }); alert("Rejoint !"); document.getElementById('modal-join').classList.add('hidden'); }
-};
-function initEventsList() {
-    const q = query(collection(db, "events"), where("attendees", "array-contains", currentUser.uid));
-    onSnapshot(q, (sn) => {
-        const list = document.getElementById('events-list');
-        list.innerHTML = "";
-        sn.forEach(d => {
-            const ev = d.data();
-            const div = document.createElement('div');
-            div.className = `list-item ${currentChatId === d.id ? 'active' : ''}`;
-            div.innerHTML = `<div class="item-content"><div class="item-title">${ev.title}</div><div class="item-subtitle">${ev.date}</div></div>`;
-            div.onclick = () => loadEventChat(d.id, ev);
-            list.appendChild(div);
+});
+document.querySelectorAll('.menubtn').forEach(button => {
+    button.addEventListener('click', function() {
+        const currentMenu = this.nextElementSibling;
+        document.querySelectorAll(".dropdown-content").forEach(c => {
+            if (c !== currentMenu) c.classList.remove('show');
         });
+        currentMenu.classList.toggle("show");
     });
-}
-
-// --- TCHAT ---
-function getConversationId(u1, u2) { return [u1, u2].sort().join('_'); }
-
-function scrollToBottom() {
-    const chatContainer = document.getElementById('chat-messages');
-    if (chatContainer) {
-        // Double sécurité : Immédiat + léger délai pour être sûr
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-        setTimeout(() => {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }, 100);
-    }
-}
-
-function loadEventChat(eid, edata) {
-    currentChatType = 'EVENT'; currentChatId = eid;
-    document.getElementById('chat-messages').innerHTML = ""; 
-    updateChatViewUI(edata.title, edata.date);
-    
-    document.getElementById('invite-code-btn').classList.remove('hidden');
-    document.getElementById('members-list-btn').classList.remove('hidden');
-
-    document.getElementById('invite-code-btn').onclick = async () => {
-        let code = edata.inviteCode;
-        if (!code) {
-            code = generateCode("EVT-");
-            await updateDoc(doc(db, "events", eid), { inviteCode: code });
-        }
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(code).then(() => alert("Code copié : " + code));
-        } else { prompt("Copie ce code :", code); }
-    };
-
-    document.getElementById('members-list-btn').onclick = async () => {
-        document.getElementById('modal-members').classList.remove('hidden');
-        const cont = document.getElementById('members-list-container');
-        cont.innerHTML = "Chargement...";
-        let html = "";
-        for(const uid of edata.attendees) {
-            const uSnap = await getDoc(doc(db, "users", uid));
-            if(uSnap.exists()) {
-                const u = uSnap.data();
-                html += `<div style="display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid #444;"><img src="${u.photoURL}" style="width:30px;height:30px;border-radius:50%"><span>${u.displayName}</span></div>`;
-            }
-        }
-        cont.innerHTML = html;
-    };
-    const btnDel = document.getElementById('delete-event-btn');
-    if(edata.createdBy === currentUser.uid) {
-        btnDel.classList.remove('hidden');
-        btnDel.onclick = async () => { if(confirm("Supprimer ?")) { await deleteDoc(doc(db, "events", eid)); resetChatUI(); } };
-    } else btnDel.classList.add('hidden');
-    subscribeMessages(eid, 'eventId');
-}
-
-function loadDirectChat(fdata) {
-    currentChatType = 'DM'; currentChatId = getConversationId(currentUser.uid, fdata.uid);
-    document.getElementById('chat-messages').innerHTML = "";
-    
-    updateChatViewUI(fdata.displayName, "Privé");
-    document.getElementById('invite-code-btn').classList.add('hidden');
-    document.getElementById('members-list-btn').classList.add('hidden');
-    document.getElementById('delete-event-btn').classList.add('hidden');
-    subscribeMessages(currentChatId, 'conversationId');
-}
-
-function updateChatViewUI(t, s) {
-    document.getElementById('no-event-selected').classList.add('hidden');
-    document.getElementById('chat-view').classList.remove('hidden');
-    document.getElementById('chat-title').textContent = t;
-    document.getElementById('chat-subtitle').textContent = s;
-    document.getElementById('main-container').classList.add('mobile-chat-active');
-    document.querySelectorAll('.list-item').forEach(e=>e.classList.remove('active'));
-}
-
-function resetChatUI() {
-    document.getElementById('main-container').classList.remove('mobile-chat-active');
-    document.getElementById('no-event-selected').classList.remove('hidden');
-    document.getElementById('chat-view').classList.add('hidden');
-    currentChatId = null;
-}
-
-function subscribeMessages(val, field) {
-    if(currentUnsubscribeChat) currentUnsubscribeChat();
-    const q = query(collection(db, "messages"), where(field, "==", val), orderBy("createdAt", "asc"));
-    
-    currentUnsubscribeChat = onSnapshot(q, (sn) => {
-        const div = document.getElementById('chat-messages');
-        div.innerHTML = "";
-        sn.forEach(d => {
-            const m = d.data();
-            const isMe = m.uid === currentUser.uid;
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `message ${isMe ? 'my-msg' : 'other-msg'}`;
-            msgDiv.innerHTML = `${!isMe ? `<span class="msg-author">${m.displayName.split(' ')[0]}</span>` : ''}${m.text}`;
-            div.appendChild(msgDiv);
-        });
-        scrollToBottom();
-    });
-}
-
-document.getElementById('chat-form').onsubmit = async (e) => {
-    e.preventDefault();
-    const txt = document.getElementById('chat-input').value.trim();
-    if(txt && currentChatId) {
-        const d = { text: txt, uid: currentUser.uid, displayName: currentUser.displayName, createdAt: serverTimestamp() };
-        if(currentChatType === 'EVENT') d.eventId = currentChatId; else d.conversationId = currentChatId;
-        await addDoc(collection(db, "messages"), d);
-        document.getElementById('chat-input').value = "";
-        scrollToBottom();
-    }
-};
+});
