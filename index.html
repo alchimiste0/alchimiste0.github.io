@@ -2,56 +2,202 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify Web App</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Carnet d'Appel Roller</title>
+    <link rel="stylesheet" href="style.css?v=8">
+    <!-- Importation de Chart.js pour les graphiques -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    
-    <div class="app-container">
-        <!-- Écran de connexion (superposé) -->
-        <div id="login-view" class="view active">
-            <h1>Spotify Web App</h1>
-            <p>Contrôlez votre musique depuis votre navigateur.</p>
-            <button id="login-button">Se connecter avec Spotify</button>
-        </div>
 
-        <!-- Vue principale de l'application (superposée) -->
-        <div id="app-view" class="view">
-            
-            <header id="app-header">
-                <div id="header-left">
-                    <div class="dropdown">
-                        <button class="menubtn">Paramètres</button>
-                        <div id="settings-menu" class="dropdown-content"></div>
-                    </div>
-                    <div class="dropdown">
-                        <button class="menubtn">Filtre</button>
-                        <div id="filter-menu" class="dropdown-content"></div>
-                    </div>
-                </div>
-                <div id="header-center">
-                    <h1>Spotify Web App</h1>
-                </div>
-                <div id="header-right"></div>
-            </header>
+    <!-- Écran de connexion -->
+    <div id="login-screen" class="screen active">
+        <h2>Connexion Club Roller</h2>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Mot de passe">
+        <button id="btn-login" class="btn-primary">Se connecter avec Email</button>
+        <div class="divider">OU</div>
+        <button id="btn-google-login" class="btn-google">🌐 Continuer avec Google</button>
+    </div>
 
-            <main id="app-main">
-                <div id="left-pane">
-                    <div id="playlists-grid"></div>
-                </div>
-                <div id="right-pane">
-                    <div id="tracks-container">
-                        <p class="placeholder-text">Cliquez sur une playlist pour voir ses pistes.</p>
-                    </div>
-                </div>
-            </main>
-
-            <footer id="app-footer"></footer>
-
+    <!-- Écran d'attente (Compte non validé) -->
+    <div id="waiting-screen" class="screen">
+        <div class="card waiting-card">
+            <h2>Compte en attente ⏳</h2>
+            <p style="color: #db4437; font-weight: bold;">Doit être validé par un administrateur du club.</p>
+            <p>Veuillez prévenir le club, puis rafraîchir la page plus tard !</p>
+            <button id="btn-logout-waiting" class="btn-danger">Se déconnecter</button>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- Application Principale -->
+    <div id="app-screen" class="screen">
+        <header>
+            <h1>🛼 Appels</h1>
+            <div class="header-buttons">
+                <button onclick="loadAdmin()" class="btn-warning">⚙️ Admin</button>
+                <button id="btn-logout" class="btn-danger">Déco.</button>
+            </div>
+        </header>
+
+        <!-- Navigation (Fil d'ariane) -->
+        <div id="breadcrumb" class="breadcrumb">
+            <span onclick="loadYears()">Accueil</span>
+        </div>
+
+        <!-- Section Années -->
+        <div id="section-years" class="section active">
+            <div class="header-action">
+                <h2>Années Sportives</h2>
+                <button onclick="createYear()" class="btn-success">+ Créer</button>
+            </div>
+            <div id="list-years" class="list-container"></div>
+        </div>
+
+        <!-- Section Catégories -->
+        <div id="section-categories" class="section">
+            <div class="header-action">
+                <h2>Catégories</h2>
+                <button onclick="createCategory()" class="btn-success">+ Créer</button>
+            </div>
+            <div id="list-categories" class="list-container"></div>
+        </div>
+
+        <!-- Section Cours (Avec Graphique + Séparation Haut/Bas) -->
+        <div id="section-courses" class="section">
+            <div class="header-action">
+                <h2>Cours</h2>
+                <button onclick="openCourseModal()" class="btn-success">+ Créer un cours</button>
+            </div>
+            <div class="chart-container">
+                <canvas id="categoryChart"></canvas>
+            </div>
+            
+            <h3 class="subsection-title">📅 À venir / Aujourd'hui</h3>
+            <div id="list-courses-upcoming" class="list-container"></div>
+            
+            <h3 class="subsection-title" style="margin-top: 30px;">⏳ Cours passés</h3>
+            <div id="list-courses-past" class="list-container"></div>
+        </div>
+
+        <!-- Section Liste d'appel -->
+        <div id="section-attendance" class="section">
+            <div class="attendance-header">
+                <div>
+                    <h2 style="margin: 0;">Liste d'appel</h2>
+                    <!-- NOUVEAU COMPTEUR -->
+                    <span id="attendance-counter" class="badge" style="background:#17a2b8; margin-top:5px; display:inline-block;">Présents : 0 / 0</span>
+                </div>
+                <input type="text" id="search-bar" placeholder="🔍 Rechercher...">
+                <button onclick="openMemberModal()" class="btn-success">+ Ajouter (Élève/Encadrant)</button>
+            </div>
+            <div class="table-responsive">
+                <table id="attendance-table">
+                    <thead>
+                        <tr>
+                            <th>Présent</th>
+                            <th>NOM Prénom</th>
+                            <th>Date naiss.</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendance-body">
+                        <!-- Rempli par le JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section Administration -->
+        <div id="section-admin" class="section">
+            <h2>Panneau d'Administration</h2>
+            
+            <div class="admin-stats">
+                <h3>Statistiques Financières & Licences</h3>
+                <p style="font-size: 13px; color: #666;"><em>Cliquez sur les badges ci-dessous pour filtrer les élèves. Les encadrants sont séparés.</em></p>
+                
+                <select id="admin-year-select" onchange="loadAdminStats(this.value)" class="year-select"></select>
+                
+                <!-- Badges / Filtres (Élèves Uniquement) -->
+                <div id="admin-members-stats" class="admin-badges"></div>
+                
+                <button onclick="toggleAdminMembersList()" class="btn-primary" style="margin-bottom: 20px;">Afficher/Masquer la liste complète</button>
+                
+                <!-- Liste complète filtrable (Cachée par défaut) -->
+                <div id="admin-members-list-container" style="display:none; margin-bottom: 20px;">
+                    <div class="table-responsive">
+                        <table id="admin-members-table">
+                            <thead><tr><th>NOM Prénom</th><th>Date naiss.</th><th>Catégorie(s)</th><th>Statut</th></tr></thead>
+                            <tbody id="admin-members-body">
+                                <!-- Rempli par JS (Élèves et Encadrants Séparés) -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="adminChart"></canvas>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 30px;">Comptes coachs/bureau validés (Application)</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead><tr><th>Nom</th><th>Email</th><th>Actions</th></tr></thead>
+                    <tbody id="admin-active"></tbody>
+                </table>
+            </div>
+
+            <h3 style="margin-top: 30px; color: #dc3545;">Comptes en attente (Bloqués)</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead><tr><th>Nom</th><th>Email</th><th>Actions</th></tr></thead>
+                    <tbody id="admin-pending"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- FENÊTRES MODALES -->
+    <div id="modal-overlay" class="modal-overlay" onclick="closeModals()"></div>
+
+    <div id="modal-course" class="modal">
+        <h3 id="modal-course-title">Créer un cours</h3>
+        <label>Date du cours :</label>
+        <input type="date" id="course-date-input" class="modal-input">
+        <label>Heure :</label>
+        <input type="time" id="course-time-input" class="modal-input">
+        <div class="modal-buttons">
+            <button onclick="closeModals()" class="btn-danger">Annuler</button>
+            <button onclick="saveCourse()" class="btn-success">Enregistrer</button>
+        </div>
+    </div>
+
+    <div id="modal-member" class="modal">
+        <h3 id="modal-member-title">Ajouter une personne</h3>
+        <p style="font-size: 12px; color: #666; margin-top:-10px;">Le profil sera importé s'il existe dans une autre catégorie.</p>
+        
+        <div style="margin-bottom: 15px;">
+            <label style="display: inline-block; margin-right: 20px;">
+                <input type="radio" name="member-role" value="eleve" checked> 👤 Élève
+            </label>
+            <label style="display: inline-block;">
+                <input type="radio" name="member-role" value="encadrant"> 🛡️ Encadrant
+            </label>
+        </div>
+
+        <label>NOM :</label>
+        <input type="text" id="member-lastname" class="modal-input" placeholder="Ex: DUPONT">
+        <label>Prénom :</label>
+        <input type="text" id="member-firstname" class="modal-input" placeholder="Ex: Jean">
+        <label>Date de naissance (Facultatif) :</label>
+        <input type="date" id="member-dob" class="modal-input">
+        <div class="modal-buttons">
+            <button onclick="closeModals()" class="btn-danger">Annuler</button>
+            <button onclick="saveMember()" class="btn-success">Enregistrer</button>
+        </div>
+    </div>
+
+    <script type="module" src="app.js?v=8"></script>
 </body>
 </html>
